@@ -1,0 +1,31 @@
+    const r = await fetch("data/latest.json?ts=" + Date.now(), { cache: "no-store" });
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    const j = await r.json();
+    if (!j.expiries || !j.expiries.length) throw new Error("empty file");
+    const prevKey = D && D.expiries[S.ei] ? D.expiries[S.ei].d : store("exp");
+    const changed = !D || D.asOf !== j.asOf;
+    D = j; lastErr = null;
+    const idx = D.expiries.findIndex((e) => e.d === prevKey);
+    S.ei = idx >= 0 ? idx : 0;
+    if (changed) { fillExp(); render(); } else renderHead();
+  } catch (e) {
+    lastErr = e;
+    if (!D) $("chain").innerHTML = `<div class="empty">No data yet.<br>The first update runs after you start the scheduled job (Actions tab → Run workflow). Then this page fills in within a minute or two.<br><small>${String(e.message || e)}</small></div>`;
+  }
+}
+
+$("exp").addEventListener("change", (e) => { S.ei = +e.target.value; store("exp", D.expiries[S.ei].d); first = true; render(); });
+$("rows").addEventListener("change", (e) => { S.rows = e.target.value; render(); });
+document.querySelectorAll("#barChain [data-v]").forEach((b) => b.addEventListener("click", () => { S.view = b.dataset.v; render(); }));
+document.querySelectorAll("#winSeg [data-w]").forEach((b) => b.addEventListener("click", () => { S.win = b.dataset.w; render(); }));
+document.querySelectorAll("#barMap [data-m]").forEach((b) => b.addEventListener("click", () => { S.metric = b.dataset.m; render(); }));
+document.querySelectorAll("#barMap [data-s]").forEach((b) => b.addEventListener("click", () => { S.scope = b.dataset.s; render(); }));
+$("tChain").addEventListener("click", () => { S.tab = "chain"; $("tChain").setAttribute("aria-selected", true); $("tMap").setAttribute("aria-selected", false); render(); });
+$("tMap").addEventListener("click", () => { S.tab = "map"; $("tMap").setAttribute("aria-selected", true); $("tChain").setAttribute("aria-selected", false); render(); });
+for (const id of ["refresh", "refresh2"]) $(id).addEventListener("click", () => load(true));
+document.addEventListener("visibilitychange", () => { if (!document.hidden) load(); });
+setInterval(() => load(), 60000);
+load();
+</script>
+</body>
+</html>
