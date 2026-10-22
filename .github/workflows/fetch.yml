@@ -1,8 +1,9 @@
 name: fetch-gld
 
 # One job per trading day that keeps running through the whole US options session and refreshes the data every 5 minutes.
-# (Plain "every 15 minutes" schedules are often delayed or skipped by GitHub, so the job does its own timing.)
-# The two schedules cover summer and winter time. A second start picks up when the first one hits GitHub's 6 hour limit.
+# Fresh data goes to a separate "data" branch (read by the page from raw.githubusercontent.com), so GitHub Pages does not
+# have to rebuild every 5 minutes. The page itself is published to gh-pages once, when the job starts.
+# The two schedules cover summer and winter time. The second start picks up when the first one hits GitHub's 6 hour limit.
 on:
   schedule:
     - cron: "10 13 * * 1-5"
@@ -31,32 +32,38 @@ jobs:
         run: |
           INTERVAL="${GLD_INTERVAL:-300}"
           REMOTE="${GLD_REMOTE:-https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git}"
-          mkdir -p site/data
+          mkdir -p site/data datapub
           start=$(date +%s)
+          first=1
           # The previous data file is the only memory between runs (volume history and yesterday's open interest).
-          if git fetch --depth 1 origin gh-pages:refs/remotes/origin/gh-pages 2>/dev/null; then
-            git show origin/gh-pages:data/latest.json > prev.json 2>/dev/null || echo "{}" > prev.json
-          else
-            echo "{}" > prev.json
-          fi
+          echo "{}" > prev.json
+          git fetch --depth 1 origin data:refs/remotes/origin/data 2>/dev/null && git show origin/data:latest.json > prev.json 2>/dev/null \
+            || { git fetch --depth 1 origin gh-pages:refs/remotes/origin/gh-pages 2>/dev/null && git show origin/gh-pages:data/latest.json > prev.json 2>/dev/null; } \
+            || echo "{}" > prev.json
+          push_dir() {  # $1 = folder, $2 = branch: force-push one fresh commit so the repository never grows
+            (
+              cd "$1"
+              rm -rf .git
+              git init -q -b "$2"
+              git config user.name "gld-bot"
+              git config user.email "gld-bot@users.noreply.github.com"
+              git add -A
+              git commit -q -m "data $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+              git push -q -f "$REMOTE" "$2"
+            ) || echo "publish to $2 failed this round"
+          }
           while true; do
             t0=$(date +%s)
-            if python scripts/fetch_gld.py --prev prev.json --out site/data/new.json; then
-              mv site/data/new.json site/data/latest.json
-              cp site/data/latest.json prev.json
-              cp index.html site/index.html
-              touch site/.nojekyll
-              # Force-push one fresh commit so the repository never grows.
-              (
-                cd site
-                rm -rf .git
-                git init -q -b gh-pages
-                git config user.name "gld-bot"
-                git config user.email "gld-bot@users.noreply.github.com"
-                git add -A
-                git commit -q -m "data $(date -u +%Y-%m-%dT%H:%M:%SZ)"
-                git push -q -f "$REMOTE" gh-pages
-              ) || echo "publish failed this round"
+            if python scripts/fetch_gld.py --prev prev.json --out datapub/latest.json; then
+              cp datapub/latest.json prev.json
+              push_dir datapub data
+              if [ "$first" = 1 ]; then
+                first=0
+                cp datapub/latest.json site/data/latest.json
+                cp index.html site/index.html
+                touch site/.nojekyll
+                push_dir site gh-pages
+              fi
             else
               echo "fetch failed this round, keeping the previous data"
             fi
