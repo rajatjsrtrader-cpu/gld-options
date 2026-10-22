@@ -1,10 +1,12 @@
 name: fetch-gld
 
-# Runs every 15 minutes, Mon-Fri, from 12:00 to 21:59 UTC. That covers the US options session in both summer and winter time.
-# GitHub can start scheduled runs a few minutes late, and occasionally skips one. The page shows how old the data is.
+# One job per trading day that keeps running through the whole US options session and refreshes the data every 5 minutes.
+# (Plain "every 15 minutes" schedules are often delayed or skipped by GitHub, so the job does its own timing.)
+# The two schedules cover summer and winter time. A second start picks up when the first one hits GitHub's 6 hour limit.
 on:
   schedule:
-    - cron: "*/5 12-21 * * 1-5"
+    - cron: "10 13 * * 1-5"
+    - cron: "50 18 * * 1-5"
   workflow_dispatch:
 
 concurrency:
@@ -17,7 +19,7 @@ permissions:
 jobs:
   fetch:
     runs-on: ubuntu-latest
-    timeout-minutes: 8
+    timeout-minutes: 355
     steps:
       - uses: actions/checkout@v4
 
@@ -25,32 +27,41 @@ jobs:
         with:
           python-version: "3.12"
 
-      # The previous data file is the only memory between runs (volume history and yesterday's open interest).
-      - name: Get previous data
+      - name: Fetch and publish every 5 minutes until the session ends
         run: |
+          INTERVAL="${GLD_INTERVAL:-300}"
+          REMOTE="${GLD_REMOTE:-https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git}"
+          mkdir -p site/data
+          start=$(date +%s)
+          # The previous data file is the only memory between runs (volume history and yesterday's open interest).
           if git fetch --depth 1 origin gh-pages:refs/remotes/origin/gh-pages 2>/dev/null; then
             git show origin/gh-pages:data/latest.json > prev.json 2>/dev/null || echo "{}" > prev.json
           else
             echo "{}" > prev.json
           fi
-
-      - name: Fetch GLD options
-        run: |
-          mkdir -p site/data
-          python scripts/fetch_gld.py --prev prev.json --out site/data/latest.json
-
-      - name: Build site
-        run: |
-          cp index.html site/index.html
-          touch site/.nojekyll
-
-      # Force-push a single fresh commit to the gh-pages branch each run, so the repository never grows.
-      - name: Publish
-        run: |
-          cd site
-          git init -q -b gh-pages
-          git config user.name "gld-bot"
-          git config user.email "gld-bot@users.noreply.github.com"
-          git add -A
-          git commit -q -m "data $(date -u +%Y-%m-%dT%H:%M:%SZ)"
-          git push -q -f "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" gh-pages
+          while true; do
+            t0=$(date +%s)
+            if python scripts/fetch_gld.py --prev prev.json --out site/data/new.json; then
+              mv site/data/new.json site/data/latest.json
+              cp site/data/latest.json prev.json
+              cp index.html site/index.html
+              touch site/.nojekyll
+              # Force-push one fresh commit so the repository never grows.
+              (
+                cd site
+                rm -rf .git
+                git init -q -b gh-pages
+                git config user.name "gld-bot"
+                git config user.email "gld-bot@users.noreply.github.com"
+                git add -A
+                git commit -q -m "data $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+                git push -q -f "$REMOTE" gh-pages
+              ) || echo "publish failed this round"
+            else
+              echo "fetch failed this round, keeping the previous data"
+            fi
+            python scripts/fetch_gld.py --check-session || { echo "session over"; break; }
+            [ $(( $(date +%s) - start )) -gt 20700 ] && { echo "time limit, the next scheduled start continues"; break; }
+            used=$(( $(date +%s) - t0 ))
+            [ "$used" -lt "$INTERVAL" ] && sleep $(( INTERVAL - used ))
+          done
