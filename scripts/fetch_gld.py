@@ -204,7 +204,7 @@ PAGE_B64 = (
     "PNIYFkIFfR9cQeMPr6lfxjjbVz+5ts//Kb//C+VHl/Y="
 )
 HIST = 5                     # snapshots of volume history kept per contract
-ROTATE_MIN_GAP = 10          # minutes; a manual re-run inside this gap overwrites instead of adding a snapshot
+ROTATE_MIN_GAP = 14          # minutes; runs closer together than this refresh the newest snapshot instead of adding one
 
 
 # ----------------------------------------------------------------------------- tiny helpers
@@ -372,11 +372,17 @@ def build(snap, prev, now: datetime):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--prev", default="")
-    ap.add_argument("--out", required=True)
+    ap.add_argument("--out", default="")
+    ap.add_argument("--check-session", action="store_true", help="exit 0 while the US session is still ahead or running, 1 once it is over")
     ap.add_argument("--fixture", default="", help="read this Cboe-format JSON instead of the network")
     ap.add_argument("--page-out", default="index.html", help="also (re)write the chart page from the copy embedded in this file")
     ap.add_argument("--now", default="", help="override the clock (ISO, UTC) for testing")
     a = ap.parse_args()
+    if a.check_session:
+        t = datetime.now(timezone.utc).astimezone(ET)
+        sys.exit(0 if t.weekday() < 5 and t.hour * 60 + t.minute <= 16 * 60 + 25 else 1)
+    if not a.out:
+        ap.error("--out is required")
 
     if a.page_out:
         import base64, zlib
