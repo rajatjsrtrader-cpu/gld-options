@@ -4,7 +4,7 @@ name: fetch-gld
 # GitHub can start scheduled runs a few minutes late, and occasionally skips one. The page shows how old the data is.
 on:
   schedule:
-    - cron: "*/15 12-21 * * 1-5"
+    - cron: "*/5 12-21 * * 1-5"
   workflow_dispatch:
 
 concurrency:
