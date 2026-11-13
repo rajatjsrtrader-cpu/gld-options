@@ -1,0 +1,452 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>GLD Options Chain</title>
+<link rel="icon" href="data:,">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+:root{
+  --font-ui:'IBM Plex Sans',system-ui,-apple-system,'Segoe UI',sans-serif;
+  --font-num:'IBM Plex Mono',ui-monospace,'SF Mono',Menlo,Consolas,monospace;
+  color-scheme:light;
+  --bg:#f6f7f8; --surface:#ffffff; --surface2:#eff1f3; --fg:#1b2026; --muted:#65707b; --line:#dfe3e7;
+  --accent:#8a6209; --accent-bg:#f4e6b8; --on-accent:#2b2005;
+  --call:#b3322b; --put:#14764a; --ok:#14764a; --warn:#b26a00; --bad:#b3322b;
+  --c1:rgba(214,69,65,.36); --c2:rgba(214,69,65,.20); --c3:rgba(214,69,65,.10);
+  --p1:rgba(28,150,93,.36); --p2:rgba(28,150,93,.20); --p3:rgba(28,150,93,.10);
+  --atm:#fff6dc; --warn-bg:#fff3df; --warn-line:#f0cf91; --warn-fg:#7a4b00;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    color-scheme:dark;
+    --bg:#0f1317; --surface:#161b20; --surface2:#1d2329; --fg:#e7eaed; --muted:#8c97a2; --line:#2a323a;
+    --accent:#e4b64f; --accent-bg:#3a2f12; --on-accent:#fff1c9;
+    --call:#ff8d83; --put:#6dd4a0; --ok:#6dd4a0; --warn:#f0b35a; --bad:#ff8d83;
+    --c1:rgba(255,110,100,.40); --c2:rgba(255,110,100,.24); --c3:rgba(255,110,100,.12);
+    --p1:rgba(60,200,130,.38); --p2:rgba(60,200,130,.22); --p3:rgba(60,200,130,.11);
+    --atm:#2a2410; --warn-bg:#2d2412; --warn-line:#5b4620; --warn-fg:#f0c987;
+  }
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--fg);font-family:var(--font-ui);font-size:14px;line-height:1.45;
+  padding-block:calc(12px + env(safe-area-inset-top,0px)) calc(28px + env(safe-area-inset-bottom,0px));
+  padding-left:max(12px,env(safe-area-inset-left,0px));padding-right:max(12px,env(safe-area-inset-right,0px))}
+.wrap{max-width:760px;margin:0 auto;display:flex;flex-direction:column;gap:10px}
+button,select{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+[hidden]{display:none!important}
+
+header{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:10px}
+.brand{display:flex;align-items:center;gap:10px;min-width:0}
+.sym{font-family:var(--font-num);font-weight:600;font-size:15px;background:var(--accent-bg);color:var(--on-accent);padding:5px 9px;border-radius:6px}
+h1{font-size:16px;font-weight:600;margin:0;line-height:1.2}
+.sub{font-size:11px;color:var(--muted);margin-top:1px}
+.pick{display:flex;flex-direction:column;gap:3px;font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);min-width:0}
+.pick select{background:var(--surface);border:1px solid var(--line);border-radius:7px;padding:7px 9px;font-size:12.5px;color:var(--fg);max-width:100%}
+
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(108px,1fr));gap:8px}
+.stat{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:7px 10px;min-width:0}
+.stat .k{font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.stat .v{font-family:var(--font-num);font-size:14px;font-weight:500;margin-top:2px;overflow-wrap:anywhere}
+.stat .v small{font-size:11px;color:var(--muted);font-weight:400}
+.v.c{color:var(--call)} .v.p{color:var(--put)}
+.chip{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:600;padding:1px 8px;border-radius:99px;border:1px solid var(--line);background:var(--surface)}
+.chip i{width:7px;height:7px;border-radius:50%;background:var(--muted)}
+.chip.fresh{color:var(--ok)} .chip.fresh i{background:var(--ok)}
+.chip.stale{color:var(--warn)} .chip.stale i{background:var(--warn)}
+.chip.closed{color:var(--muted)}
+
+.tabs{display:flex;gap:4px}
+.tabs button{background:none;border:1px solid transparent;color:var(--muted);font-weight:600;font-size:12.5px;padding:7px 14px;border-radius:8px;cursor:pointer}
+.tabs button[aria-selected="true"]{background:var(--surface);border-color:var(--line);color:var(--accent)}
+.bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:var(--surface)}
+.seg button{background:none;border:0;padding:7px 12px;font-size:12.5px;color:var(--muted);cursor:pointer}
+.seg button[aria-pressed="true"]{background:var(--accent-bg);color:var(--on-accent);font-weight:600}
+.btn{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:7px 12px;font-size:12.5px;cursor:pointer}
+.btn:hover{border-color:var(--accent)}
+.grow{flex:1}
+.note{background:var(--warn-bg);border:1px solid var(--warn-line);color:var(--warn-fg);border-radius:8px;padding:8px 11px;font-size:12px}
+
+.chain{background:var(--surface);border:1px solid var(--line);border-radius:10px}
+table{width:100%;border-collapse:separate;border-spacing:0;table-layout:fixed}
+thead th{position:sticky;top:0;z-index:3;background:var(--surface2);font-size:10px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);padding:6px 1px;text-align:center;border-bottom:1px solid var(--line);white-space:nowrap}
+thead tr.grp th{font-size:10.5px;letter-spacing:.1em;padding:7px 2px;border-bottom:0}
+thead tr.sub2 th{top:29px}
+th.gc{color:var(--call)} th.gp{color:var(--put)} th.gs{color:var(--accent)}
+td{font-family:var(--font-num);font-variant-numeric:tabular-nums;font-size:12px;text-align:center;padding:5px 1px;border-bottom:1px solid var(--line);white-space:nowrap;overflow:hidden;line-height:1.15}
+td b{display:block;font-weight:500}
+td small{display:block;font-size:9.5px;color:var(--muted);font-weight:400;margin-top:1px}
+tbody tr:last-child td{border-bottom:0}
+td.stk{font-weight:600;background:var(--surface2);font-size:12.5px;vertical-align:middle}
+td.r1 b{font-weight:600}
+td.neg b{color:var(--call)}
+td.na{color:var(--muted)}
+tr.atm td{box-shadow:inset 0 1px 0 var(--accent),inset 0 -1px 0 var(--accent)}
+tr.atm td.stk{color:var(--accent)}
+.cr1.c{background:var(--c1)} .cr2.c{background:var(--c2)} .cr3.c{background:var(--c3)}
+.cr1.p{background:var(--p1)} .cr2.p{background:var(--p2)} .cr3.p{background:var(--p3)}
+.empty{padding:28px 16px;text-align:center;color:var(--muted);font-size:13px}
+
+.top{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:9px 11px;min-width:0}
+.card h2{font-size:10px;letter-spacing:.08em;text-transform:uppercase;margin:0 0 6px;font-weight:600}
+.card.c h2{color:var(--call)} .card.p h2{color:var(--put)}
+.line{display:flex;justify-content:space-between;gap:8px;font-size:12.5px;padding:2px 0}
+.line span:first-child{color:var(--muted)}
+.line b{font-family:var(--font-num);font-weight:500}
+.legend{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:11px;color:var(--muted)}
+.legend span{display:inline-flex;align-items:center;gap:5px}
+.sw{width:12px;height:12px;border-radius:3px;border:1px solid var(--line);display:inline-block}
+footer{font-size:11.5px;color:var(--muted);display:flex;flex-direction:column;gap:4px}
+
+/* map */
+.mp{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:10px 10px 6px}
+.mp-hdr,.mp-row{display:grid;grid-template-columns:1fr 62px 1fr;align-items:center}
+.mp-hdr{font-size:9.5px;font-weight:600;letter-spacing:.05em;color:var(--muted);text-transform:uppercase;padding:0 2px 5px;border-bottom:1px solid var(--line)}
+.mp-hdr .c{text-align:right;color:var(--call)} .mp-hdr .s{text-align:center;color:var(--accent)} .mp-hdr .p{color:var(--put)}
+.mp-row{padding:2px;border-bottom:1px solid var(--line)}
+.mp-row.atm{background:var(--atm);box-shadow:inset 0 0 0 1px var(--accent);border-radius:5px}
+.mp-l{display:flex;justify-content:flex-end;align-items:center;gap:5px;min-width:0}
+.mp-r{display:flex;justify-content:flex-start;align-items:center;gap:5px;min-width:0}
+.mp-s{text-align:center;font-family:var(--font-num);font-size:12px;font-weight:600}
+.mp-n{font-family:var(--font-num);font-size:11px;font-weight:500;white-space:nowrap}
+.mp-n.c{color:var(--call)} .mp-n.p{color:var(--put)}
+.bar-c,.bar-p{height:16px;border-radius:3px;flex:0 0 auto}
+.bar-c{background:var(--call);opacity:.75} .bar-p{background:var(--put);opacity:.75}
+.bar-c.neg,.bar-p.neg{opacity:.35}
+@media (max-width:420px){td{font-size:11px}td small{font-size:9px}.top{grid-template-columns:1fr}}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="brand"><span class="sym">GLD</span><div><h1>GLD Options Chain</h1><div class="sub" id="srcline">SPDR Gold ETF · delayed about 15 min · every expiry and strike</div></div></div>
+    <label class="pick" for="exp">Expiry<select id="exp"></select></label>
+  </header>
+
+  <section class="stats" id="stats" aria-label="Summary"></section>
+
+  <div class="tabs" role="tablist">
+    <button role="tab" id="tChain" aria-selected="true">Chain</button>
+    <button role="tab" id="tMap" aria-selected="false">OI map</button>
+  </div>
+
+  <div class="bar" id="barChain">
+    <div class="seg" role="group" aria-label="View">
+      <button data-v="level" aria-pressed="true">Level</button>
+      <button data-v="change" aria-pressed="false">Change</button>
+      <button data-v="price" aria-pressed="false">Price</button>
+    </div>
+    <div class="seg" id="winSeg" role="group" aria-label="Change window" hidden>
+      <button data-w="15m" aria-pressed="true">15 min</button>
+      <button data-w="1h" aria-pressed="false">1 hour</button>
+    </div>
+    <label class="pick" for="rows" style="flex-direction:row;align-items:center;gap:6px">Strikes
+      <select id="rows"><option value="all">All</option><option value="25">±25 around price</option><option value="10">±10 around price</option><option value="active">Traded today</option></select></label>
+    <span class="grow"></span>
+    <button class="btn" id="refresh">Refresh</button>
+  </div>
+  <div class="bar" id="barMap" hidden>
+    <div class="seg" role="group" aria-label="Metric"><button data-m="oi" aria-pressed="true">OI</button><button data-m="doi" aria-pressed="false">Δ OI</button></div>
+    <div class="seg" role="group" aria-label="Scope"><button data-s="this" aria-pressed="true">This expiry</button><button data-s="all" aria-pressed="false">All expiries</button></div>
+    <span class="grow"></span>
+    <button class="btn" id="refresh2">Refresh</button>
+  </div>
+
+  <div class="note" id="note" hidden></div>
+  <div class="chain" id="chain"></div>
+  <section class="top" id="top" aria-label="Highest strikes" hidden></section>
+  <div class="mp" id="map" hidden></div>
+
+  <div class="legend" id="legend">
+    <span><i class="sw" style="background:var(--c1)"></i><i class="sw" style="background:var(--c2)"></i><i class="sw" style="background:var(--c3)"></i>calls: 1st / 2nd / 3rd highest</span>
+    <span><i class="sw" style="background:var(--p1)"></i><i class="sw" style="background:var(--p2)"></i><i class="sw" style="background:var(--p3)"></i>puts: 1st / 2nd / 3rd highest</span>
+  </div>
+  <footer id="foot"></footer>
+</div>
+
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+const ok = (n) => typeof n === "number" && isFinite(n);
+const S = { ei: 0, view: "level", win: "15m", rows: "all", tab: "chain", metric: "oi", scope: "this" };
+let D = null, lastErr = null, first = true;
+
+/* ---------- formatting ---------- */
+function fmt(n) {
+  if (!ok(n)) return "–";
+  const a = Math.abs(n);
+  if (a >= 1e6) return (n / 1e6).toFixed(2) + "M";
+  if (a >= 1e5) return Math.round(n / 1e3) + "K";
+  if (a >= 1e4) return (n / 1e3).toFixed(1) + "K";
+  if (a >= 1e3) return (n / 1e3).toFixed(2) + "K";
+  return String(Math.round(n));
+}
+const fmtS = (n) => (!ok(n) ? "–" : Math.round(n) === 0 ? "0" : (n > 0 ? "+" : "−") + fmt(Math.abs(n)));
+const fmtP = (p, signed) => {
+  if (!ok(p)) return "";
+  const v = p * 100, a = Math.abs(v);
+  const sg = signed ? (v > 0 ? "+" : v < 0 ? "−" : "") : "";
+  if (a >= 1000) return sg + "999%+";
+  return sg + (a >= 100 ? a.toFixed(0) : a.toFixed(1)) + "%";
+};
+const px2 = (n) => (ok(n) ? n.toFixed(2) : "–");
+const istTime = (iso) => new Date(iso).toLocaleTimeString("en-IN", { timeZone: "Asia/Kolkata", hour: "2-digit", minute: "2-digit", hour12: true });
+function ago(iso) {
+  const m = Math.round((Date.now() - new Date(iso).getTime()) / 60000);
+  if (!ok(m) || m < 0) return "";
+  if (m < 2) return "just now";
+  if (m < 90) return m + " min ago";
+  const h = Math.round(m / 60);
+  return h < 48 ? h + " h ago" : Math.round(h / 24) + " days ago";
+}
+function marketOpenET() {
+  const p = new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", weekday: "short", hour: "numeric", minute: "numeric", hour12: false }).formatToParts(new Date());
+  const g = (t) => p.find((x) => x.type === t).value;
+  if (g("weekday") === "Sat" || g("weekday") === "Sun") return false;
+  const m = (+g("hour") % 24) * 60 + +g("minute");
+  return m >= 570 && m <= 980;
+}
+const dlabel = (e) => { const d = new Date(e.d + "T00:00:00Z"); return d.toLocaleDateString("en-US", { timeZone: "UTC", month: "short", day: "numeric", year: "2-digit" }) + " · " + e.dte + "D · " + (e.tag === "M" ? "Monthly" : "Weekly"); };
+function store(k, v) { try { if (v === undefined) return localStorage.getItem("gld:" + k); localStorage.setItem("gld:" + k, v); } catch (e) { return null; } }
+
+/* ---------- calculations ---------- */
+function steps() {
+  const avail = Math.max(0, D.hist.length - 1);
+  const k = Math.min(S.win === "1h" ? 4 : 1, avail);
+  return { k, base: k > 0 ? D.hist[D.hist.length - 1 - k] : null };
+}
+function calc(c, k) {
+  if (!c) return null;
+  const [last, bid, ask, iv, delta, oi, oiPrev, vh] = c;
+  const mid = ok(bid) && ok(ask) && ask > 0 ? (bid + ask) / 2 : null;
+  const px = ok(last) && last > 0 ? last : mid || 0;
+  const vol = vh[4], base = k > 0 ? vh[4 - k] : NaN, dvol = k > 0 ? vol - base : NaN;
+  return { px, iv, delta, oi, oiPrev, vol, base, dvol, turn: vol * px * 100, dturn: k > 0 ? dvol * px * 100 : NaN, doi: ok(oiPrev) ? oi - oiPrev : NaN };
+}
+function rankFn(vals) {
+  const top = [...new Set(vals.filter((v) => ok(v) && v > 0))].sort((a, b) => b - a).slice(0, 3);
+  return (v) => (ok(v) ? top.indexOf(v) + 1 : 0);
+}
+const sum = (a, f) => a.reduce((s, x) => s + (ok(f(x)) ? f(x) : 0), 0);
+function maxPain(strikes) {
+  let best = null;
+  for (const [S0] of strikes) {
+    let cost = 0;
+    for (const [k, c, p] of strikes) cost += (c ? c[5] * Math.max(S0 - k, 0) : 0) + (p ? p[5] * Math.max(k - S0, 0) : 0);
+    if (!best || cost < best.cost) best = { k: S0, cost };
+  }
+  return best ? best.k : null;
+}
+const spot = () => (ok(D.spot) ? D.spot : null);
+function atmStrike(strikes) {
+  const s = spot(); if (s == null || !strikes.length) return null;
+  return strikes.reduce((b, r) => (Math.abs(r[0] - s) < Math.abs(b - s) ? r[0] : b), strikes[0][0]);
+}
+
+/* ---------- header / stats ---------- */
+function renderHead() {
+  const e = D.expiries[S.ei], { k } = steps();
+  const open = marketOpenET(), age = (Date.now() - new Date(D.asOf).getTime()) / 60000;
+  const state = open ? (age > 40 ? "stale" : "fresh") : "closed";
+  const chip = state === "fresh" ? "UP TO DATE" : state === "stale" ? "DELAYED" : "MARKET CLOSED";
+  const sA = e.s;
+  const tot = (i) => ({ oi: sum(sA, (r) => r[i] && r[i][5]), vol: sum(sA, (r) => r[i] && r[i][7][4]) });
+  const C = tot(1), P = tot(2);
+  const chg = ok(D.prevClose) && ok(D.spot) ? (D.spot / D.prevClose - 1) : NaN;
+  const wallC = sA.reduce((b, r) => (r[1] && (!b || r[1][5] > b[1]) ? [r[0], r[1][5]] : b), null);
+  const wallP = sA.reduce((b, r) => (r[2] && (!b || r[2][5] > b[1]) ? [r[0], r[2][5]] : b), null);
+  const mp = maxPain(sA);
+  const items = [
+    ["GLD price", `${px2(D.spot)}${ok(chg) ? `<br><small>${fmtP(chg, true)} vs prev close</small>` : ""}`, ""],
+    ["Data", `<span class="chip ${state}"><i></i>${chip}</span><br><small>${istTime(D.asOf)} IST · ${ago(D.asOf)}</small>`, ""],
+    ["Calls", `${fmt(C.oi)} <small>OI</small><br>${fmt(C.vol)} <small>vol</small>`, "c"],
+    ["Puts", `${fmt(P.oi)} <small>OI</small><br>${fmt(P.vol)} <small>vol</small>`, "p"],
+    ["Put/call", `${C.oi ? (P.oi / C.oi).toFixed(2) : "–"} <small>OI</small><br>${C.vol ? (P.vol / C.vol).toFixed(2) : "–"} <small>vol</small>`, ""],
+    ["Walls · pain", `${wallC ? wallC[0] : "–"} <small>call</small> ${wallP ? wallP[0] : "–"} <small>put</small><br>${mp ?? "–"} <small>max pain</small>`, ""],
+  ];
+  $("stats").innerHTML = items.map(([a, b, c]) => `<div class="stat"><div class="k">${a}</div><div class="v ${c}">${b}</div></div>`).join("");
+  $("srcline").textContent = `SPDR Gold ETF · ${D.source === "cboe" ? "Cboe" : "Yahoo"} delayed quotes · ${D.expiries.length} expiries`;
+  const notes = [];
+  if (state === "stale") notes.push("The data is older than expected. The free scheduler can run late; the next update should arrive shortly.");
+  const nt = notes.join(" "); $("note").hidden = !nt; $("note").textContent = nt;
+  return { k };
+}
+
+/* ---------- chain ---------- */
+function renderChain() {
+  const e = D.expiries[S.ei], { k, base } = steps();
+  const all = e.s;
+  const atm = atmStrike(all);
+  let rows = all;
+  if (S.rows === "active") rows = all.filter((r) => (r[1] && r[1][7][4] > 0) || (r[2] && r[2][7][4] > 0));
+  else if (S.rows !== "all" && atm != null) {
+    const i = all.findIndex((r) => r[0] === atm), n = +S.rows;
+    rows = all.slice(Math.max(0, i - n), i + n + 1);
+  }
+  const ctot = { oi: 0, turn: 0, vol: 0, dturn: 0 }, ptot = { oi: 0, turn: 0, vol: 0, dturn: 0 };
+  const all2 = all.map((r) => [r[0], calc(r[1], k), calc(r[2], k)]);
+  for (const [, c, p] of all2) for (const [t, x] of [[ctot, c], [ptot, p]]) if (x) { t.oi += x.oi; t.vol += x.vol; t.turn += x.turn; if (ok(x.dturn) && x.dturn > 0) t.dturn += x.dturn; }
+  const m = new Map(all2.map((r) => [r[0], r]));
+  const view = rows.map((r) => m.get(r[0]));
+
+  const defs = {
+    level: [["oi", "OI"], ["turn", "Turn*"], ["vol", "Vol"]],
+    change: [["doi", "ΔOI"], ["dturn", "ΔTurn*"], ["dvol", "ΔVol"]],
+    price: [["delta", "Delta"], ["iv", "IV %"], ["px", "Last"]],
+  }[S.view];
+  const cOrder = defs, pOrder = [...defs].reverse();
+  const rankable = S.view !== "price";
+  const rank = {};
+  if (rankable) for (const [key] of defs) { rank["c" + key] = rankFn(view.map((r) => r[1] && r[1][key])); rank["p" + key] = rankFn(view.map((r) => r[2] && r[2][key])); }
+
+  const pct = (key, x, tot) => {
+    if (S.view === "level") return tot[key] > 0 ? fmtP(x[key] / tot[key]) : "";
+    if (S.view === "change") {
+      if (key === "doi") return x.oiPrev > 0 ? fmtP(x.doi / x.oiPrev, true) : "";
+      if (key === "dturn") return tot.dturn > 0 && ok(x.dturn) ? fmtP(x.dturn / tot.dturn, true) : "";
+      if (key === "dvol") return ok(x.dvol) ? (x.base > 0 ? fmtP(x.dvol / x.base, true) : x.dvol > 0 ? "new" : "") : "";
+    }
+    return "";
+  };
+  const show = (key, x) => {
+    if (!x) return "–";
+    const v = x[key];
+    if (S.view === "price") return key === "delta" ? (ok(v) ? v.toFixed(2) : "–") : key === "iv" ? (ok(v) ? v.toFixed(1) : "–") : (x.px ? px2(x.px) : "–");
+    return key[0] === "d" ? fmtS(v) : fmt(v);
+  };
+  const cell = (r, s, key) => {
+    const x = r[s === "c" ? 1 : 2];
+    const v = x ? x[key] : NaN;
+    const rk = rankable ? rank[s + key](v) : 0;
+    const cls = [!x || !ok(v) ? "na" : "", rk ? `cr${rk} ${s}` : "", rk === 1 ? "r1" : "", key[0] === "d" && key !== "delta" && ok(v) && v < 0 ? "neg" : ""].join(" ").trim();
+    const p = x && rankable && !(S.view === "change" && v === 0) ? pct(key, x, s === "c" ? ctot : ptot) : "";
+    return `<td class="${cls}"><b>${show(key, x)}</b>${p ? `<small>${p}</small>` : ""}</td>`;
+  };
+
+  if (!view.length) { $("chain").innerHTML = `<div class="empty">No strikes match this filter.</div>`; }
+  else {
+    const w = defs.length, stk = 14, each = ((100 - stk) / (2 * w)).toFixed(3);
+    const cg = [...Array(w).fill(each), stk, ...Array(w).fill(each)].map((x) => `<col style="width:${x}%">`).join("");
+    const head = (o) => o.map(([, l]) => `<th>${l}</th>`).join("");
+    const body = view.map((r) => `<tr class="${r[0] === atm ? "atm" : ""}" data-k="${r[0]}">` + cOrder.map(([key]) => cell(r, "c", key)).join("") +
+      `<td class="stk">${r[0]}</td>` + pOrder.map(([key]) => cell(r, "p", key)).join("") + "</tr>").join("");
+    $("chain").innerHTML = `<table><colgroup>${cg}</colgroup><thead><tr class="grp"><th class="gc" colspan="${w}">CALLS</th><th class="gs">STRIKE</th><th class="gp" colspan="${w}">PUTS</th></tr>
+      <tr class="sub2">${head(cOrder)}<th class="gs">$</th>${head(pOrder)}</tr></thead><tbody>${body}</tbody></table>`;
+    const h1 = document.querySelector("tr.grp th"); if (h1) document.querySelectorAll("tr.sub2 th").forEach((t) => (t.style.top = h1.offsetHeight + "px"));
+  }
+
+  /* highest-strike cards */
+  const best = (side, key) => { let b = null; for (const r of all2) { const x = r[side]; if (x && ok(x[key]) && x[key] > 0 && (!b || x[key] > b.v)) b = { k: r[0], v: x[key] }; } return b; };
+  const lines = (side) => [["Volume", "vol", fmt], ["Turnover*", "turn", (n) => "$" + fmt(n)], ["Open interest", "oi", fmt]]
+    .map(([l, key, f]) => { const b = best(side, key); return b ? `<div class="line"><span>${l}</span><b>${b.k} · ${f(b.v)}</b></div>` : ""; }).join("");
+  $("top").hidden = false;
+  $("top").innerHTML = `<div class="card c"><h2>Calls · highest</h2>${lines(1)}</div><div class="card p"><h2>Puts · highest</h2>${lines(2)}</div>`;
+
+  const win = S.view === "change" ? (k > 0 ? ` Volume change is versus the snapshot at ${istTime(base)} IST; OI change is versus the previous trading day.` : " Volume change needs a second snapshot; it appears after the next update.") : "";
+  const how = { level: "Small % under each value is its share of that side's total for this expiry.", change: "Small % under each change is the % change (ΔOI and ΔVol) or share of the total increase (ΔTurn).", price: "Last is the last trade, or the bid/ask midpoint when nothing has traded." }[S.view];
+  $("foot").innerHTML = `<div>${how}${win}</div><div>* Turnover is estimated as volume × price × 100 (the free feed has no turnover field). Data is delayed about 15 minutes and comes from a public source; treat it as indicative.</div>`;
+  $("legend").hidden = !rankable;
+  $("winSeg").hidden = S.view !== "change";
+  return atm;
+}
+
+/* ---------- OI map ---------- */
+function renderMap() {
+  const exps = S.scope === "all" ? D.expiries : [D.expiries[S.ei]];
+  const agg = new Map();
+  for (const e of exps) for (const [k, c, p] of e.s) {
+    const a = agg.get(k) || { k, c: 0, p: 0 };
+    const v = (x) => (S.metric === "oi" ? x[5] : ok(x[6]) ? x[5] - x[6] : 0);
+    if (c) a.c += v(c); if (p) a.p += v(p);
+    agg.set(k, a);
+  }
+  let arr = [...agg.values()].sort((a, b) => a.k - b.k);
+  const maxAbs = Math.max(1, ...arr.map((r) => Math.max(Math.abs(r.c), Math.abs(r.p))));
+  arr = arr.filter((r) => Math.max(Math.abs(r.c), Math.abs(r.p)) >= maxAbs * 0.02);
+  const atm = atmStrike(arr.map((r) => [r.k]));
+  const unit = S.metric === "oi" ? "OI" : "ΔOI";
+  const val = (n) => (S.metric === "oi" ? fmt(n) : fmtS(n));
+  const bw = (v) => Math.round(Math.max(v ? 4 : 0, (Math.abs(v) / maxAbs) * 96));
+  const topC = [...arr].filter((r) => r.c > 0).sort((a, b) => b.c - a.c).slice(0, 3);
+  const topP = [...arr].filter((r) => r.p > 0).sort((a, b) => b.p - a.p).slice(0, 3);
+  const any = arr.some((r) => r.c || r.p);
+  const tl = (list, key, tag) => list.length ? list.map((r) => `<div class="line"><span>${r.k}</span><b>${fmt(r[key])} ${tag}</b></div>`).join("") : `<div class="line"><span>–</span></div>`;
+  $("map").innerHTML = `${S.metric === "doi" && !any ? `<div class="note" style="margin-bottom:8px">No OI change yet. OI is published once a day, so this fills in after the next trading day's first update.</div>` : ""}
+    <div class="top" style="margin-bottom:10px"><div class="card c"><h2>Top resistance · calls ${unit}</h2>${tl(topC, "c", "C")}</div><div class="card p"><h2>Top support · puts ${unit}</h2>${tl(topP, "p", "P")}</div></div>
+    <div class="mp-hdr"><span class="c">CALLS ${unit}</span><span class="s">STRIKE</span><span class="p">PUTS ${unit}</span></div>
+    ${arr.map((r) => `<div class="mp-row${r.k === atm ? " atm" : ""}"><div class="mp-l">${r.c ? `<div class="bar-c${r.c < 0 ? " neg" : ""}" style="width:${bw(r.c)}px"></div><span class="mp-n c">${val(r.c)}</span>` : ""}</div><div class="mp-s">${r.k}</div><div class="mp-r">${r.p ? `<span class="mp-n p">${val(r.p)}</span><div class="bar-p${r.p < 0 ? " neg" : ""}" style="width:${bw(r.p)}px"></div>` : ""}</div></div>`).join("")}
+    <div class="footer" style="font-size:10.5px;color:var(--muted);padding:8px 2px 2px">${S.metric === "oi" ? "Bars = open interest" : "Bars = OI change since the previous trading day"} · ${S.scope === "all" ? "summed across all expiries" : "selected expiry"} · tiny strikes hidden.</div>`;
+  $("foot").innerHTML = "";
+}
+
+/* ---------- orchestration ---------- */
+function render() {
+  if (!D) return;
+  renderHead();
+  $("chain").hidden = S.tab !== "chain"; $("top").hidden = S.tab !== "chain"; $("map").hidden = S.tab !== "map";
+  $("barChain").hidden = S.tab !== "chain"; $("barMap").hidden = S.tab !== "map";
+  $("legend").hidden = S.tab !== "chain";
+  let atm = null;
+  if (S.tab === "chain") atm = renderChain(); else renderMap();
+  for (const [id, key, val] of [["#barChain [data-v]", "v", S.view], ["#winSeg [data-w]", "w", S.win], ["#barMap [data-m]", "m", S.metric], ["#barMap [data-s]", "s", S.scope]])
+    document.querySelectorAll(id).forEach((b) => b.setAttribute("aria-pressed", b.dataset[key] === val));
+  if (first && S.tab === "chain" && atm != null) { first = false; const tr = document.querySelector(`tr[data-k="${atm}"]`); if (tr) tr.scrollIntoView({ block: "center" }); }
+}
+function fillExp() {
+  $("exp").innerHTML = D.expiries.map((e, i) => `<option value="${i}">${dlabel(e)}</option>`).join("");
+  $("exp").value = String(S.ei);
+}
+// Fresh data is pushed to a separate "data" branch (no Pages rebuild needed) and read from raw.githubusercontent.com.
+// If that is not reachable, fall back to the copy published with the page.
+async function getData() {
+  const ts = Date.now();
+  const m = location.hostname.match(/^([^.]+)\.github\.io$/), repo = location.pathname.split("/")[1];
+  if (m && repo) {
+    try {
+      const r = await fetch(`https://raw.githubusercontent.com/${m[1]}/${repo}/data/latest.json?ts=${ts}`, { cache: "no-store" });
+      if (r.ok) return await r.json();
+    } catch (e) { /* fall through to the bundled copy */ }
+  }
+  const r = await fetch("data/latest.json?ts=" + ts, { cache: "no-store" });
+  if (!r.ok) throw new Error("HTTP " + r.status);
+  return await r.json();
+}
+async function load(manual) {
+  try {
+    const j = await getData();
+    if (!j.expiries || !j.expiries.length) throw new Error("empty file");
+    const prevKey = D && D.expiries[S.ei] ? D.expiries[S.ei].d : store("exp");
+    const changed = !D || D.asOf !== j.asOf;
+    D = j; lastErr = null;
+    const idx = D.expiries.findIndex((e) => e.d === prevKey);
+    S.ei = idx >= 0 ? idx : 0;
+    if (changed) { fillExp(); render(); } else renderHead();
+  } catch (e) {
+    lastErr = e;
+    if (!D) $("chain").innerHTML = `<div class="empty">No data yet.<br>The first update runs after you start the scheduled job (Actions tab → Run workflow). Then this page fills in within a minute or two.<br><small>${String(e.message || e)}</small></div>`;
+  }
+}
+
+$("exp").addEventListener("change", (e) => { S.ei = +e.target.value; store("exp", D.expiries[S.ei].d); first = true; render(); });
+$("rows").addEventListener("change", (e) => { S.rows = e.target.value; render(); });
+document.querySelectorAll("#barChain [data-v]").forEach((b) => b.addEventListener("click", () => { S.view = b.dataset.v; render(); }));
+document.querySelectorAll("#winSeg [data-w]").forEach((b) => b.addEventListener("click", () => { S.win = b.dataset.w; render(); }));
+document.querySelectorAll("#barMap [data-m]").forEach((b) => b.addEventListener("click", () => { S.metric = b.dataset.m; render(); }));
+document.querySelectorAll("#barMap [data-s]").forEach((b) => b.addEventListener("click", () => { S.scope = b.dataset.s; render(); }));
+$("tChain").addEventListener("click", () => { S.tab = "chain"; $("tChain").setAttribute("aria-selected", true); $("tMap").setAttribute("aria-selected", false); render(); });
+$("tMap").addEventListener("click", () => { S.tab = "map"; $("tMap").setAttribute("aria-selected", true); $("tChain").setAttribute("aria-selected", false); render(); });
+for (const id of ["refresh", "refresh2"]) $(id).addEventListener("click", () => load(true));
+document.addEventListener("visibilitychange", () => { if (!document.hidden) load(); });
+setInterval(() => load(), 60000);
+load();
+</script>
+</body>
+</html>
